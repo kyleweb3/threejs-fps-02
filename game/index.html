@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DUSTLINE — tactical FPS</title>
+    <!-- DUSTLINE — threejs-fps-02 -->
+    <style>
+      :root {
+        --canvas: #191410;
+        --ink: #f2e8d5;
+        --muted: #a89a80;
+        --accent: #ff9a2a;
+        --enemy: #d84a2b;
+        --friend: #4fb3a9;
+        --panel: rgba(16, 12, 9, 0.72);
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: var(--canvas); }
+      body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); }
+      #app { position: fixed; inset: 0; }
+      #app canvas { display: block; width: 100%; height: 100%; }
+      .hud { position: absolute; inset: 0; pointer-events: none; user-select: none; }
+
+      /* Crosshair */
+      .crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+      .ch-dot { position: absolute; left: -1px; top: -1px; width: 2px; height: 2px; background: var(--ink); border-radius: 50%; }
+      .ch-line { position: absolute; left: 0; top: 0; width: 2px; height: 10px; background: var(--ink); transform: translate(-50%, -50%); }
+      .ch-line.ch-2, .ch-line.ch-3 { width: 10px; height: 2px; }
+      .hitmarker { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 26px; font-weight: 800; color: var(--ink); opacity: 0; text-shadow: 0 0 6px #000; }
+
+      /* Minimap (top-left) */
+      .minimap { position: absolute; left: 16px; top: 14px; width: 150px; height: 150px; border: 1px solid rgba(242, 232, 213, 0.18); border-radius: 6px; overflow: hidden; }
+      .minimap canvas { display: block; width: 150px; height: 150px; }
+
+      /* Top bar */
+      .topbar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; align-items: center; background: var(--panel); padding: 8px 18px; border-radius: 6px; border: 1px solid rgba(242, 232, 213, 0.14); }
+      .round-label { font-size: 12px; letter-spacing: 2px; color: var(--muted); }
+      .timer { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .score { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .bomb-status { font-size: 13px; font-weight: 700; color: var(--accent); min-width: 0; }
+      .bomb-status:empty { display: none; }
+
+      /* Alive counts + kill feed */
+      .alive { position: absolute; top: 14px; right: 16px; text-align: right; font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+      .alive-team.atk { color: var(--friend); }
+      .alive-team.def { color: var(--enemy); }
+      .killfeed { position: absolute; top: 64px; right: 16px; text-align: right; font-size: 13px; }
+      .feed-row { background: var(--panel); padding: 3px 8px; margin-bottom: 4px; border-radius: 4px; }
+      .feed-atk { color: var(--friend); font-weight: 700; }
+      .feed-def { color: var(--enemy); font-weight: 700; }
+      .feed-victim { color: var(--muted); }
+
+      /* Banner */
+      .banner { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; opacity: 0; transition: opacity 0.3s; text-shadow: 0 2px 12px rgba(0,0,0,0.8); }
+      .banner-main { font-size: 54px; font-weight: 800; letter-spacing: 6px; }
+      .banner-sub { font-size: 17px; color: var(--muted); margin-top: 6px; }
+
+      /* Bottom left: health / armor / money */
+      .bottom-left { position: absolute; left: 18px; bottom: 18px; }
+      .health-row, .armor-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+      .health-label, .armor-label { font-size: 11px; letter-spacing: 2px; color: var(--muted); width: 46px; }
+      .health-bar, .armor-bar { width: 180px; height: 10px; background: rgba(242, 232, 213, 0.15); border-radius: 5px; overflow: hidden; }
+      .health-fill { height: 100%; width: 100%; background: var(--friend); }
+      .armor-fill { height: 100%; width: 0%; background: var(--accent); }
+      .health-num, .armor-num { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; width: 34px; }
+      .money { font-size: 24px; font-weight: 700; color: var(--accent); margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+      /* Bottom right: ammo */
+      .bottom-right { position: absolute; right: 18px; bottom: 18px; text-align: right; }
+      .ammo { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .ammo-reserve { font-size: 20px; color: var(--muted); }
+      .weapon-name { font-size: 13px; letter-spacing: 1px; color: var(--muted); margin-top: 2px; }
+      .grenade-row { font-size: 12px; color: var(--muted); margin-top: 4px; letter-spacing: 1px; }
+
+      /* Overlays */
+      .vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(216, 74, 43, 0.55) 100%); }
+      .flash-overlay { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: #fff; }
+      .help { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(16, 12, 9, 0.78); pointer-events: auto; text-align: center; padding: 24px; }
+      .help h1 { font-size: 64px; letter-spacing: 12px; color: var(--accent); }
+      .help p { color: var(--muted); font-size: 15px; max-width: 560px; }
+      .help-cta { color: var(--ink) !important; font-size: 20px !important; font-weight: 700; animation: pulse 1.6s infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+      /* Buy menu */
+      .buy-menu { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; background: var(--panel); border: 1px solid rgba(242, 232, 213, 0.2); border-radius: 10px; padding: 18px 20px; pointer-events: auto; width: 380px; }
+      .buy-title { font-size: 18px; letter-spacing: 3px; margin-bottom: 4px; }
+      .buy-money { font-size: 22px; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
+      .buy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .buy-item { display: flex; align-items: center; gap: 8px; background: rgba(242, 232, 213, 0.08); border: 1px solid rgba(242, 232, 213, 0.14); color: var(--ink); border-radius: 6px; padding: 9px 10px; cursor: pointer; font-family: inherit; text-align: left; }
+      .buy-item:hover:not(:disabled) { background: rgba(255, 154, 42, 0.22); border-color: var(--accent); }
+      .buy-item:disabled { opacity: 0.4; cursor: not-allowed; }
+      .buy-key { font-size: 11px; font-weight: 700; background: rgba(242, 232, 213, 0.16); border-radius: 3px; padding: 2px 5px; }
+      .buy-label { flex: 1; font-size: 13px; }
+      .buy-price { font-size: 13px; font-weight: 700; color: var(--accent); }
+      .buy-hint { margin-top: 12px; font-size: 12px; color: var(--muted); }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/three.module.min.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
